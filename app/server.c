@@ -66,27 +66,35 @@ int main() {
 	// Find the firt / character
 	while (response[i++] != '/' && i < len) ;
 	int bytes_sent;
-	// Verify it is the 'echo' endpoint
 	if (response[i] == ' ') {
+		// root
 		strcpy(reply, "HTTP/1.1 200 OK\r\n\r\n");
-		bytes_sent = send(fd, reply, strlen(reply), 0);
-		return 0;
-	}
-	char *str = &response[i];
-	if (strncmp(&response[i], "echo", 4) != 0) {
+	} else if (strncmp(&response[i], "echo", 4) == 0) {
+		// echo end point
+		// Find the second / character
+		while (response[i++] != '/' && i < len) ;
+		char echo[len];
+		memset(echo, 0, len);
+		int j = 0;
+		while (response[i] != ' ' && i < len) {
+			echo[j++] = response[i++];
+		}
+		sprintf(reply, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %ld\r\n\r\n%s", strlen(echo), echo);
+	} else if (strncmp(&response[i], "user-agent", 10) == 0) {
+		// user-agent end point
+		while (strncmp(&response[i++], "User-Agent", 10)) ;
+		while (response[i++] != ' ') ;	// Traverse till user-agent value
+		char agent[len];
+		memset(agent, 0, len);
+		int j = 0;
+		while (response[i] != '\r' && j < len) {
+			agent[j++] = response[i++];
+		}
+		sprintf(reply, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %ld\r\n\r\n%s", strlen(agent), agent);
+	} else { // Not supported
 		strcpy(reply, "HTTP/1.1 404 Not Found\r\n\r\n");
-		bytes_sent = send(fd, reply, strlen(reply), 0);
-		return 0;
 	}
-	// Find the second / character
-	while (response[i++] != '/' & i < len) ;
-	char echo[len];
-	memset(echo, 0, len);
-	int j = 0;
-	while (response[i] != ' ' && i < len) {
-		echo[j++] = response[i++];
-	}
-	sprintf(reply, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %ld\r\n\r\n%s", strlen(echo), echo);
+	printf("---%s\n", reply);
 	bytes_sent = send(fd, reply, strlen(reply), 0);
 
 	close(server_fd);
