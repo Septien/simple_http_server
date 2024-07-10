@@ -56,24 +56,21 @@ int main() {
 	int fd = accept(server_fd, (struct sockaddr *) &client_addr, &client_addr_len);
 	printf("Client connected\n");
 
-	char *reply = "HTTP/1.1 200 OK\r\n\r\n";
-	int bytes_sent = send(fd, reply, strlen(reply), 0);
-
 	int len = 100;
+	char reply[len];
 	char response[len];
 	// Receive response from client
 	int bytes_recv = recv(fd, response, len, 0);
-	
-	char url[50];
+
 	int i = 0;
 	// Find the character /
 	while (response[i] != '/') i++;
 	if (response[i+1] != ' ') {
-		reply = "HTTP/1.1 404 Not Found\r\n\r\n";
+		strcpy(reply, "HTTP/1.1 404 Not Found\r\n\r\n");
 	} else {
-		reply = "HTTP/1.1 200 OK\r\n\r\n";
+		strcpy(reply, "HTTP/1.1 200 OK\r\n\r\n");
 	}
-	bytes_sent = send(fd, reply, strlen(reply), 0);
+	int bytes_sent = send(fd, reply, strlen(reply), 0);
 
 	close(server_fd);
 
