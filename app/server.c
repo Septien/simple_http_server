@@ -63,14 +63,31 @@ int main() {
 	int bytes_recv = recv(fd, response, len, 0);
 
 	int i = 0;
-	// Find the character /
-	while (response[i] != '/') i++;
-	if (response[i+1] != ' ') {
-		strcpy(reply, "HTTP/1.1 404 Not Found\r\n\r\n");
-	} else {
+	// Find the firt / character
+	while (response[i++] != '/' && i < len) ;
+	int bytes_sent;
+	// Verify it is the 'echo' endpoint
+	if (response[i] == ' ') {
 		strcpy(reply, "HTTP/1.1 200 OK\r\n\r\n");
+		bytes_sent = send(fd, reply, strlen(reply), 0);
+		return 0;
 	}
-	int bytes_sent = send(fd, reply, strlen(reply), 0);
+	char *str = &response[i];
+	if (strncmp(&response[i], "echo", 4) != 0) {
+		strcpy(reply, "HTTP/1.1 404 Not Found\r\n\r\n");
+		bytes_sent = send(fd, reply, strlen(reply), 0);
+		return 0;
+	}
+	// Find the second / character
+	while (response[i++] != '/' & i < len) ;
+	char echo[len];
+	memset(echo, 0, len);
+	int j = 0;
+	while (response[i] != ' ' && i < len) {
+		echo[j++] = response[i++];
+	}
+	sprintf(reply, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %ld\r\n\r\n%s", strlen(echo), echo);
+	bytes_sent = send(fd, reply, strlen(reply), 0);
 
 	close(server_fd);
 
