@@ -7,6 +7,9 @@
 #include <errno.h>
 #include <unistd.h>
 #include <sys/select.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 #define CONNECTIONS 300
 #define LEN 1000
@@ -45,7 +48,7 @@ void removeq(queue_t *q, int fd, int i) {
 	q->size--;
 }
 
-void process_read(int fd, data_t *replies, int idx) {
+void process_read(int fd, data_t *replies, int idx, char *dir) {
 	// Receive response from client
 	char response[LEN];
 	int bytes_recv = recv(fd, response, LEN, 0);
@@ -81,6 +84,30 @@ void process_read(int fd, data_t *replies, int idx) {
 			agent[j++] = response[i++];
 		}
 		sprintf(replies->replies[idx], "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %ld\r\n\r\n%s", strlen(agent), agent);
+	} else if (strncmp(&response[i], "files", 5) == 0) {
+		// Send file content to client
+		// Find the second / character
+		while (response[i] != ' ' && response[i++] != '/' && i < LEN) ;
+		char filename[LEN];
+		memset(filename, 0, LEN);
+		strcpy(filename, dir);
+		int j = strlen(filename);
+		while(response[i] != ' ') {
+			filename[j++] = response[i++];
+		}
+		int f = open(filename, O_RDONLY);
+		int err = errno;
+		if (f == -1 || strlen(filename) == strlen(dir)) {
+			strcpy(replies->replies[idx], "HTTP/1.1 404 Not Found\r\n\r\n");
+		} else {
+			char content[LEN];
+			memset(content, 0, LEN);
+			int r = read(f, content, LEN);
+			int err = errno;
+			sprintf(replies->replies[idx], "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: %ld\r\n\r\n%s", strlen(content), content);
+		}
+		close(f);
+
 	} else { // Not supported
 		strcpy(replies->replies[idx], "HTTP/1.1 404 Not Found\r\n\r\n");
 	}
@@ -113,11 +140,15 @@ void handle_error(int err) {
 	}
 }
 
-int main() {
+int main(int argc, char **argv) {
 	// Disable output buffering
 	setbuf(stdout, NULL);
  	setbuf(stderr, NULL);
 
+	char *dir = NULL;
+	if (argc > 2) {
+		dir = argv[2];
+	}
 	// You can use print statements as follows for debugging, they'll be visible when running tests.
 	printf("Logs from your program will appear here!\n");
 
@@ -159,8 +190,7 @@ int main() {
 		printf("Listen failed: %s \n", strerror(errno));
 		return 1;
 	}
-	
-	printf("Socket server: %d\n", server_fd);
+
 	printf("Waiting for clients to connect...\n");
 	client_addr_len = sizeof(client_addr);
 
@@ -177,7 +207,6 @@ int main() {
 				fdmax = (fds.arr[i] > fdmax ? fds.arr[i] : fdmax);
 			}
 		}
-		printf("%d\n", count);
 		int ret = select(fdmax + 1, &rset, NULL, NULL, NULL);
 		int err = errno;
 		switch(ret) {
@@ -193,12 +222,11 @@ int main() {
 						printf("New client connected %d.\n", fd);
 						push(&fds, fd);
 					}
-					printf("Connected clients: %d.\n", fds.size);
 					FD_CLR(server_fd, &rset);
 				}
 				for (i = 0; i < CONNECTIONS; i++) {
 					if (FD_ISSET(fds.arr[i], &rset)) {
-						process_read(fds.arr[i], &replies, i);
+						process_read(fds.arr[i], &replies, i, dir);
 						FD_CLR(fds.arr[i], &rset);
 						removeq(&fds, fds.arr[i], i);
 					}
