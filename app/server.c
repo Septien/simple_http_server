@@ -48,17 +48,10 @@ void removeq(queue_t *q, int fd, int i) {
 	q->size--;
 }
 
-void process_read(int fd, data_t *replies, int idx, char *dir) {
-	// Receive response from client
-	char response[LEN];
-	int bytes_recv = recv(fd, response, LEN, 0);
-
+void process_GET(int fd, data_t *replies, char *response, int idx, char *dir) {
 	int i = 0;
-	// Find the first / character
-	printf("Processing read.\n");
 	while (response[i++] != '/' && i < LEN) ;
-	// Clear memory
-	memset(replies->replies[idx], 0, sizeof(replies->replies[idx]));
+	// Handle endpoints
 	if (response[i] == ' ') {
 		// root
 		strcpy(replies->replies[idx], "HTTP/1.1 200 OK\r\n\r\n");
@@ -96,7 +89,6 @@ void process_read(int fd, data_t *replies, int idx, char *dir) {
 			filename[j++] = response[i++];
 		}
 		int f = open(filename, O_RDONLY);
-		int err = errno;
 		if (f == -1 || strlen(filename) == strlen(dir)) {
 			strcpy(replies->replies[idx], "HTTP/1.1 404 Not Found\r\n\r\n");
 		} else {
@@ -115,6 +107,58 @@ void process_read(int fd, data_t *replies, int idx, char *dir) {
 	int bytes_sent = send(fd, replies->replies[idx], strlen(replies->replies[idx]), 0);
 	printf("Closing %d.\n", fd);
 	close(fd);
+}
+
+void process_POST(int fd, data_t *replies, char *response, int idx, char *dir) {
+	int i = 0;
+	while (response[i++] != '/' && i < LEN) ;
+	// Handle endpoints 
+	if (strncmp(&response[i], "files", 5) == 0) {
+		// Create new file and copy contents
+		// Find the second / character
+		while (response[i] != ' ' && response[i++] != '/' && i < LEN) ;
+		char filename[LEN];
+		memset(filename, 0, LEN);
+		strcpy(filename, dir);
+		int j = strlen(filename);
+		while(response[i] != ' ') {
+			filename[j++] = response[i++];
+		}
+		int f = open(filename, O_WRONLY | O_CREAT | S_IRWXU);
+		if (f == -1 || strlen(filename) == strlen(dir)) {
+			strcpy(replies->replies[idx], "HTTP/1.1 404 Not Found\r\n\r\n");
+		} else {
+			while (strncmp(&response[i++], "Content-Length: ", 16) != 0) ;
+			while (response[i++] != ' ') ;
+			int n = 0;
+			sscanf(&response[i], "%d", &n);
+			int pos = strlen(response) - n;
+			int r = write(f, &response[pos], n);
+			int err = errno;
+			strcpy(replies->replies[idx], "HTTP/1.1 201 Created\r\n\r\n%s");
+		}
+		close(f);
+	}
+
+	int bytes_sent = send(fd, replies->replies[idx], strlen(replies->replies[idx]), 0);
+	printf("Closing %d.\n", fd);
+	close(fd);
+}
+
+void process_request(int fd, data_t *replies, int idx, char *dir) {
+	// Clear memory
+	memset(replies->replies[idx], 0, sizeof(replies->replies[idx]));
+	// Receive response from client
+	char response[LEN];
+	int bytes_recv = recv(fd, response, LEN, 0);
+
+	// Find the first / character
+	printf("Processing request.\n");
+	if (strncmp(response, "GET", 3) == 0) {
+		process_GET(fd, replies, response, idx, dir);
+	} else if (strncmp(response, "POST", 4) == 0) {
+		process_POST(fd, replies, response, idx, dir);
+	}
 }
 
 void handle_error(int err) {
@@ -226,7 +270,7 @@ int main(int argc, char **argv) {
 				}
 				for (i = 0; i < CONNECTIONS; i++) {
 					if (FD_ISSET(fds.arr[i], &rset)) {
-						process_read(fds.arr[i], &replies, i, dir);
+						process_request(fds.arr[i], &replies, i, dir);
 						FD_CLR(fds.arr[i], &rset);
 						removeq(&fds, fds.arr[i], i);
 					}
