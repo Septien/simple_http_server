@@ -42,122 +42,125 @@ void push(queue_t *q, int fd) {
 	q->size++;
 }
 
-void removeq(queue_t *q, int fd, int i) {
+void removeq(queue_t *q, int i) {
 	if (q->size == 0) return;
 	q->arr[i] = 0;
 	q->size--;
 }
 
-void process_GET(int fd, data_t *replies, char *response, int idx, char *dir) {
+void process_GET(int fd, char *request, char *dir) {
 	int i = 0;
-	while (response[i++] != '/' && i < LEN) ;
+	char response[LEN];
+	memset(response, 0, LEN);
+	while (request[i++] != '/' && i < LEN) ;
 	// Handle endpoints
-	if (response[i] == ' ') {
+	if (request[i] == ' ') {
 		// root
-		strcpy(replies->replies[idx], "HTTP/1.1 200 OK\r\n\r\n");
-	} else if (strncmp(&response[i], "echo", 4) == 0) {
+		strcpy(response, "HTTP/1.1 200 OK\r\n\r\n");
+	} else if (strncmp(&request[i], "echo", 4) == 0) {
 		// echo end point
 		// Find the second / character
-		while (response[i++] != '/' && i < LEN) ;
-		char echo[LEN];
-		memset(echo, 0, LEN);
+		while (request[i++] != '/' && i < LEN) ;
+		char echo[LEN/10];
+		memset(echo, 0, LEN/10);
 		int j = 0;
-		while (response[i] != ' ' && i < LEN) {
-			echo[j++] = response[i++];
+		while (request[i] != ' ' && i < LEN/10) {
+			echo[j++] = request[i++];
 		}
-		sprintf(replies->replies[idx], "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %ld\r\n\r\n%s", strlen(echo), echo);
-	} else if (strncmp(&response[i], "user-agent", 10) == 0) {
+		sprintf(response, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %ld\r\n\r\n%s", strlen(echo), echo);
+	} else if (strncmp(&request[i], "user-agent", 10) == 0) {
 		// user-agent end point
-		while (strncmp(&response[i++], "User-Agent", 10)) ;
-		while (response[i++] != ' ') ;	// Traverse till user-agent value
-		char agent[LEN];
-		memset(agent, 0, LEN);
+		while (strncmp(&request[i++], "User-Agent", 10)) ;
+		while (request[i++] != ' ') ;	// Traverse till user-agent value
+		char agent[LEN/10];
+		memset(agent, 0, LEN/10);
 		int j = 0;
-		while (response[i] != '\r' && j < LEN) {
-			agent[j++] = response[i++];
+		while (request[i] != '\r' && j < LEN/10) {
+			agent[j++] = request[i++];
 		}
-		sprintf(replies->replies[idx], "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %ld\r\n\r\n%s", strlen(agent), agent);
-	} else if (strncmp(&response[i], "files", 5) == 0) {
+		sprintf(response, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %ld\r\n\r\n%s", strlen(agent), agent);
+	} else if (strncmp(&request[i], "files", 5) == 0) {
 		// Send file content to client
 		// Find the second / character
-		while (response[i] != ' ' && response[i++] != '/' && i < LEN) ;
+		while (request[i] != ' ' && request[i++] != '/' && i < LEN) ;
 		char filename[LEN];
 		memset(filename, 0, LEN);
 		strcpy(filename, dir);
 		int j = strlen(filename);
-		while(response[i] != ' ') {
-			filename[j++] = response[i++];
+		while(request[i] != ' ') {
+			filename[j++] = request[i++];
 		}
 		int f = open(filename, O_RDONLY);
 		if (f == -1 || strlen(filename) == strlen(dir)) {
-			strcpy(replies->replies[idx], "HTTP/1.1 404 Not Found\r\n\r\n");
+			strcpy(response, "HTTP/1.1 404 Not Found\r\n\r\n");
 		} else {
-			char content[LEN];
-			memset(content, 0, LEN);
-			int r = read(f, content, LEN);
+			char content[LEN/2];
+			memset(content, 0, LEN/2);
+			int r = read(f, content, LEN/2);
 			int err = errno;
-			sprintf(replies->replies[idx], "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: %ld\r\n\r\n%s", strlen(content), content);
+			sprintf(response, "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: %ld\r\n\r\n%s", strlen(content), content);
 		}
 		close(f);
 
 	} else { // Not supported
-		strcpy(replies->replies[idx], "HTTP/1.1 404 Not Found\r\n\r\n");
+		strcpy(response, "HTTP/1.1 404 Not Found\r\n\r\n");
 	}
 
-	int bytes_sent = send(fd, replies->replies[idx], strlen(replies->replies[idx]), 0);
+	int bytes_sent = send(fd, response, strlen(response), 0);
 	printf("Closing %d.\n", fd);
 	close(fd);
 }
 
-void process_POST(int fd, data_t *replies, char *response, int idx, char *dir) {
+void process_POST(int fd, char *request, char *dir) {
 	int i = 0;
-	while (response[i++] != '/' && i < LEN) ;
+	char response[LEN];
+	memset(response, 0, LEN);
+	while (request[i++] != '/' && i < LEN) ;
 	// Handle endpoints 
-	if (strncmp(&response[i], "files", 5) == 0) {
+	if (strncmp(&request[i], "files", 5) == 0) {
 		// Create new file and copy contents
 		// Find the second / character
-		while (response[i] != ' ' && response[i++] != '/' && i < LEN) ;
+		while (request[i] != ' ' && request[i++] != '/' && i < LEN) ;
 		char filename[LEN];
 		memset(filename, 0, LEN);
 		strcpy(filename, dir);
 		int j = strlen(filename);
-		while(response[i] != ' ') {
-			filename[j++] = response[i++];
+		while(request[i] != ' ') {
+			filename[j++] = request[i++];
 		}
 		int f = open(filename, O_WRONLY | O_CREAT | S_IRWXU);
 		if (f == -1 || strlen(filename) == strlen(dir)) {
-			strcpy(replies->replies[idx], "HTTP/1.1 404 Not Found\r\n\r\n");
+			strcpy(response, "HTTP/1.1 404 Not Found\r\n\r\n");
 		} else {
-			while (strncmp(&response[i++], "Content-Length: ", 16) != 0) ;
-			while (response[i++] != ' ') ;
+			while (strncmp(&request[i++], "Content-Length: ", 16) != 0) ;
+			while (request[i++] != ' ') ;
 			int n = 0;
-			sscanf(&response[i], "%d", &n);
-			int pos = strlen(response) - n;
-			int r = write(f, &response[pos], n);
+			sscanf(&request[i], "%d", &n);
+			int pos = strlen(request) - n;
+			int r = write(f, &request[pos], n);
 			int err = errno;
-			strcpy(replies->replies[idx], "HTTP/1.1 201 Created\r\n\r\n%s");
+			strcpy(response, "HTTP/1.1 201 Created\r\n\r\n%s");
 		}
 		close(f);
 	}
 
-	int bytes_sent = send(fd, replies->replies[idx], strlen(replies->replies[idx]), 0);
+	int bytes_sent = send(fd, response, strlen(response), 0);
 	printf("Closing %d.\n", fd);
 	close(fd);
 }
 
-void process_request(int fd, data_t *replies, int idx, char *dir) {
+void process_request(int fd, char *dir) {
 	// Clear memory
-	memset(replies->replies[idx], 0, sizeof(replies->replies[idx]));
-	// Receive response from client
-	char response[LEN];
-	int bytes_recv = recv(fd, response, LEN, 0);
+	// Receive request from client
+	char request[LEN];
+	int bytes_recv = recv(fd, request, LEN, 0);
 
 	// Find the first / character
 	printf("Processing request.\n");
-	if (strncmp(response, "GET", 3) == 0) {
-		process_GET(fd, replies, response, idx, dir);
-	} else if (strncmp(response, "POST", 4) == 0) {
-		process_POST(fd, replies, response, idx, dir);
+	if (strncmp(request, "GET", 3) == 0) {
+		process_GET(fd, request, dir);
+	} else if (strncmp(request, "POST", 4) == 0) {
+		process_POST(fd, request, dir);
 	}
 }
 
@@ -196,11 +199,9 @@ int main(int argc, char **argv) {
 	// You can use print statements as follows for debugging, they'll be visible when running tests.
 	printf("Logs from your program will appear here!\n");
 
-	data_t replies;		// Store the replies
 	queue_t fds;		// Read sockets
 	fd_set rset;
 	init(&fds);
-	init_data(&replies);
 	FD_ZERO(&rset);
 
 	int server_fd, client_addr_len;
@@ -270,9 +271,9 @@ int main(int argc, char **argv) {
 				}
 				for (i = 0; i < CONNECTIONS; i++) {
 					if (FD_ISSET(fds.arr[i], &rset)) {
-						process_request(fds.arr[i], &replies, i, dir);
+						process_request(fds.arr[i], dir);
 						FD_CLR(fds.arr[i], &rset);
-						removeq(&fds, fds.arr[i], i);
+						removeq(&fds, i);
 					}
 				}
 				break;
